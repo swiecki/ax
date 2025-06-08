@@ -457,3 +457,37 @@ export const updateDetailedProgress = <T extends AxGenOut = AxGenOut>(
 
   console.log(output)
 }
+
+export async function runWithConcurrency<T>(
+  tasks: Array<() => Promise<T>>,
+  limit: number
+): Promise<T[]> {
+  if (limit <= 0) {
+    return Promise.all(tasks.map((t) => t()))
+  }
+
+  const results: T[] = new Array(tasks.length)
+  const executing: Promise<void>[] = []
+
+  const enqueue = (task: () => Promise<T>, index: number) => {
+    const p = task()
+      .then((res) => {
+        results[index] = res
+      })
+      .finally(() => {
+        const idx = executing.indexOf(p)
+        if (idx >= 0) executing.splice(idx, 1)
+      })
+    executing.push(p)
+  }
+
+  for (let i = 0; i < tasks.length; i++) {
+    if (executing.length >= limit) {
+      await Promise.race(executing)
+    }
+    enqueue(tasks[i], i)
+  }
+
+  await Promise.all(executing)
+  return results
+}
