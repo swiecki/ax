@@ -8,7 +8,7 @@ import {
 } from './optimize.js'
 import type { AxProgram, AxProgramDemos } from './program.js'
 import type { AxGenIn, AxGenOut } from './types.js'
-import { updateProgressBar } from './util.js'
+import { updateProgressBar, runWithConcurrency } from './util.js'
 
 export interface AxMiPROOptions {
   numCandidates?: number
@@ -28,6 +28,7 @@ export interface AxMiPROOptions {
   verbose?: boolean
   earlyStoppingTrials?: number
   minImprovementThreshold?: number
+  concurrency?: number
 }
 
 interface ConfigType {
@@ -66,6 +67,7 @@ export class AxMiPRO<
   private bootstrapper: AxBootstrapFewShot<IN, OUT>
   private earlyStoppingTrials: number
   private minImprovementThreshold: number
+  private concurrency: number
 
   constructor({
     ai,
@@ -96,6 +98,7 @@ export class AxMiPRO<
     this.verbose = miproOptions.verbose ?? false
     this.earlyStoppingTrials = miproOptions.earlyStoppingTrials ?? 5
     this.minImprovementThreshold = miproOptions.minImprovementThreshold ?? 0.01
+    this.concurrency = miproOptions.concurrency ?? 5
 
     this.ai = ai
     this.program = program
@@ -162,7 +165,6 @@ export class AxMiPRO<
    * @returns Array of generated instruction candidates
    */
   private async proposeInstructionCandidates(): Promise<string[]> {
-    const instructions: string[] = []
 
     // Get a summary of the program for program-aware proposing
     let programContext = ''
@@ -179,20 +181,19 @@ export class AxMiPRO<
     // Generate random tips for tip-aware proposing
     const tips = this.tipAwareProposer ? this.generateTips() : []
 
-    // Generate instructions for each candidate
-    for (let i = 0; i < this.numCandidates; i++) {
+    // Generate instructions for each candidate concurrently
+    const tasks = Array.from({ length: this.numCandidates }, (_, i) => async () => {
       const tipIndex = tips.length > 0 ? i % tips.length : -1
       const tipToUse = tipIndex >= 0 ? tips[tipIndex] : ''
-
-      const instruction = await this.generateInstruction({
+      return this.generateInstruction({
         programContext,
         dataContext,
         tip: tipToUse,
         candidateIndex: i,
       })
+    })
 
-      instructions.push(instruction)
-    }
+    const instructions = await runWithConcurrency(tasks, this.concurrency)
 
     return instructions
   }
@@ -591,19 +592,24 @@ export class AxMiPRO<
       evalSet = minibatchEvalSet
     }
 
-    // Evaluate the configuration
-    let sumOfScores = 0
-    for (const example of evalSet) {
-      try {
-        const prediction = await this.program.forward(this.ai, example as IN)
-        const score = metricFn({ prediction, example })
-        sumOfScores += score
-      } catch (err) {
-        if (this.verbose) {
-          console.error('Error evaluating example:', err)
+    // Evaluate the configuration concurrently
+    const tasks = evalSet.map(
+      (example) => async () => {
+        try {
+          const prediction = await this.program.forward(this.ai, example as IN)
+          const score = metricFn({ prediction, example })
+          return score
+        } catch (err) {
+          if (this.verbose) {
+            console.error('Error evaluating example:', err)
+          }
+          return 0
         }
       }
-    }
+    )
+
+    const scores = await runWithConcurrency(tasks, this.concurrency)
+    const sumOfScores = scores.reduce((sum, s) => sum + s, 0)
     if (evalSet.length === 0) return 0 // Avoid division by zero
     return sumOfScores / evalSet.length
   }
@@ -625,18 +631,23 @@ export class AxMiPRO<
       labeledExamples
     )
 
-    let sumOfScores = 0
-    for (const example of valset) {
-      try {
-        const prediction = await this.program.forward(this.ai, example as IN)
-        const score = metricFn({ prediction, example })
-        sumOfScores += score
-      } catch (err) {
-        if (this.verbose) {
-          console.error('Error evaluating example:', err)
+    const tasks = valset.map(
+      (example) => async () => {
+        try {
+          const prediction = await this.program.forward(this.ai, example as IN)
+          const score = metricFn({ prediction, example })
+          return score
+        } catch (err) {
+          if (this.verbose) {
+            console.error('Error evaluating example:', err)
+          }
+          return 0
         }
       }
-    }
+    )
+
+    const scores = await runWithConcurrency(tasks, this.concurrency)
+    const sumOfScores = scores.reduce((sum, s) => sum + s, 0)
     if (valset.length === 0) return 0 // Avoid division by zero
     return sumOfScores / valset.length
   }

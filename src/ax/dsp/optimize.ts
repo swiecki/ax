@@ -127,88 +127,80 @@ export class AxBootstrapFewShot<
 
       const batch = examples.slice(i, i + this.batchSize)
 
-      // Process batch sequentially for now (could be parallelized if AI service supports it)
-      for (const ex of batch) {
-        if (!ex) {
-          continue
-        }
+      await Promise.all(
+        batch.map(async (ex) => {
+          if (!ex) return
 
-        // Use remaining examples as demonstration examples (excluding current one)
-        const exList = examples.filter((e) => e !== ex)
-        this.program.setExamples(exList)
+          const exList = examples.filter((e) => e !== ex)
+          this.program.setExamples(exList)
 
-        // Use teacher AI if provided, otherwise use student AI
-        const aiService = this.teacherAI || this.ai
+          const aiService = this.teacherAI || this.ai
 
-        this.stats.totalCalls++
-        let res: OUT
-        let error: Error | undefined
+          this.stats.totalCalls++
+          let res: OUT
+          let error: Error | undefined
 
-        try {
-          res = await this.program.forward(aiService, ex as IN, aiOpt)
+          try {
+            res = await this.program.forward(aiService, ex as IN, aiOpt)
 
-          // Estimate token usage if cost monitoring is enabled
-          if (this.costMonitoring) {
-            // Very rough estimate - replace with actual token counting from your AI service
-            this.stats.estimatedTokenUsage +=
-              JSON.stringify(ex).length / 4 + JSON.stringify(res).length / 4
+            if (this.costMonitoring) {
+              this.stats.estimatedTokenUsage +=
+                JSON.stringify(ex).length / 4 + JSON.stringify(res).length / 4
+            }
+
+            const score = metricFn({ prediction: res, example: ex })
+            const success = score >= 0.5
+            if (success) {
+              this.traces = [...this.traces, ...this.program.getTraces()]
+              this.stats.successfulDemos++
+            }
+          } catch (err) {
+            error = err as Error
+            res = {} as OUT
           }
 
-          const score = metricFn({ prediction: res, example: ex })
-          const success = score >= 0.5 // Assuming a threshold of 0.5 for success
-          if (success) {
-            this.traces = [...this.traces, ...this.program.getTraces()]
-            this.stats.successfulDemos++
+          const current =
+            i + examples.length * roundIndex + (batch.indexOf(ex) + 1)
+          const total = examples.length * this.maxRounds
+          const et = new Date().getTime() - st
+
+          if (this.verboseMode || this.debugMode) {
+            const configInfo = {
+              maxRounds: this.maxRounds,
+              batchSize: this.batchSize,
+              earlyStoppingPatience: this.earlyStoppingPatience,
+              costMonitoring: this.costMonitoring,
+              verboseMode: this.verboseMode,
+              debugMode: this.debugMode,
+            }
+
+            updateDetailedProgress(
+              roundIndex,
+              current,
+              total,
+              et,
+              ex,
+              this.stats,
+              configInfo,
+              res,
+              error
+            )
+          } else {
+            updateProgressBar(
+              current,
+              total,
+              this.traces.length,
+              et,
+              'Tuning Prompt',
+              30
+            )
           }
-        } catch (err) {
-          error = err as Error
-          res = {} as OUT
-        }
 
-        const current =
-          i + examples.length * roundIndex + (batch.indexOf(ex) + 1)
-        const total = examples.length * this.maxRounds
-        const et = new Date().getTime() - st
-
-        // Use enhanced progress reporting if verbose or debug mode is enabled
-        if (this.verboseMode || this.debugMode) {
-          // Create a configuration object to pass to updateDetailedProgress
-          const configInfo = {
-            maxRounds: this.maxRounds,
-            batchSize: this.batchSize,
-            earlyStoppingPatience: this.earlyStoppingPatience,
-            costMonitoring: this.costMonitoring,
-            verboseMode: this.verboseMode,
-            debugMode: this.debugMode,
+          if (this.traces.length >= maxDemos) {
+            return
           }
-
-          updateDetailedProgress(
-            roundIndex,
-            current,
-            total,
-            et,
-            ex,
-            this.stats,
-            configInfo,
-            res,
-            error
-          )
-        } else {
-          // Use the standard progress bar for normal mode
-          updateProgressBar(
-            current,
-            total,
-            this.traces.length,
-            et,
-            'Tuning Prompt',
-            30
-          )
-        }
-
-        if (this.traces.length >= maxDemos) {
-          return
-        }
-      }
+        })
+      )
     }
 
     // Check if we should early stop based on no improvement
