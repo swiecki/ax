@@ -28,6 +28,7 @@ export interface AxMiPROOptions {
   verbose?: boolean
   earlyStoppingTrials?: number
   minImprovementThreshold?: number
+  parallelEvalBatchSize?: number
 }
 
 interface ConfigType {
@@ -66,6 +67,7 @@ export class AxMiPRO<
   private bootstrapper: AxBootstrapFewShot<IN, OUT>
   private earlyStoppingTrials: number
   private minImprovementThreshold: number
+  private parallelEvalBatchSize: number
 
   constructor({
     ai,
@@ -96,6 +98,7 @@ export class AxMiPRO<
     this.verbose = miproOptions.verbose ?? false
     this.earlyStoppingTrials = miproOptions.earlyStoppingTrials ?? 5
     this.minImprovementThreshold = miproOptions.minImprovementThreshold ?? 0.01
+    this.parallelEvalBatchSize = miproOptions.parallelEvalBatchSize ?? 5
 
     this.ai = ai
     this.program = program
@@ -162,38 +165,41 @@ export class AxMiPRO<
    * @returns Array of generated instruction candidates
    */
   private async proposeInstructionCandidates(): Promise<string[]> {
-    const instructions: string[] = []
-
-    // Get a summary of the program for program-aware proposing
-    let programContext = ''
+    // Generate contexts in parallel
+    const contextPromises: Promise<string>[] = []
+    
     if (this.programAwareProposer) {
-      programContext = await this.generateProgramSummary()
+      contextPromises.push(this.generateProgramSummary())
+    } else {
+      contextPromises.push(Promise.resolve(''))
+    }
+    
+    if (this.dataAwareProposer) {
+      contextPromises.push(this.generateDataSummary())
+    } else {
+      contextPromises.push(Promise.resolve(''))
     }
 
-    // Get a summary of the dataset for data-aware proposing
-    let dataContext = ''
-    if (this.dataAwareProposer) {
-      dataContext = await this.generateDataSummary()
-    }
+    const [programContext, dataContext] = await Promise.all(contextPromises)
 
     // Generate random tips for tip-aware proposing
     const tips = this.tipAwareProposer ? this.generateTips() : []
 
-    // Generate instructions for each candidate
+    // Generate instructions for all candidates in parallel
+    const instructionPromises: Promise<string>[] = []
     for (let i = 0; i < this.numCandidates; i++) {
       const tipIndex = tips.length > 0 ? i % tips.length : -1
       const tipToUse = tipIndex >= 0 ? tips[tipIndex] : ''
 
-      const instruction = await this.generateInstruction({
+      instructionPromises.push(this.generateInstruction({
         programContext,
         dataContext,
         tip: tipToUse,
         candidateIndex: i,
-      })
-
-      instructions.push(instruction)
+      }))
     }
 
+    const instructions = await Promise.all(instructionPromises)
     return instructions
   }
 
@@ -591,21 +597,39 @@ export class AxMiPRO<
       evalSet = minibatchEvalSet
     }
 
-    // Evaluate the configuration
-    let sumOfScores = 0
-    for (const example of evalSet) {
-      try {
-        const prediction = await this.program.forward(this.ai, example as IN)
-        const score = metricFn({ prediction, example })
-        sumOfScores += score
-      } catch (err) {
-        if (this.verbose) {
-          console.error('Error evaluating example:', err)
-        }
-      }
-    }
+    // Evaluate the configuration in parallel batches
     if (evalSet.length === 0) return 0 // Avoid division by zero
-    return sumOfScores / evalSet.length
+    
+    const batchSize = Math.min(this.parallelEvalBatchSize, evalSet.length)
+    const batches: AxExample[][] = []
+    
+    for (let i = 0; i < evalSet.length; i += batchSize) {
+      batches.push(evalSet.slice(i, i + batchSize))
+    }
+    
+    let sumOfScores = 0
+    let totalProcessed = 0
+    
+    for (const batch of batches) {
+      const batchPromises = batch.map(async (example) => {
+        try {
+          const prediction = await this.program.forward(this.ai, example as IN)
+          const score = metricFn({ prediction, example })
+          return score
+        } catch (err) {
+          if (this.verbose) {
+            console.error('Error evaluating example:', err)
+          }
+          return 0 // Return 0 score for failed evaluations
+        }
+      })
+      
+      const batchScores = await Promise.all(batchPromises)
+      sumOfScores += batchScores.reduce((sum, score) => sum + score, 0)
+      totalProcessed += batch.length
+    }
+    
+    return sumOfScores / totalProcessed
   }
 
   /**
@@ -625,20 +649,38 @@ export class AxMiPRO<
       labeledExamples
     )
 
-    let sumOfScores = 0
-    for (const example of valset) {
-      try {
-        const prediction = await this.program.forward(this.ai, example as IN)
-        const score = metricFn({ prediction, example })
-        sumOfScores += score
-      } catch (err) {
-        if (this.verbose) {
-          console.error('Error evaluating example:', err)
-        }
-      }
-    }
     if (valset.length === 0) return 0 // Avoid division by zero
-    return sumOfScores / valset.length
+    
+    const batchSize = Math.min(this.parallelEvalBatchSize, valset.length)
+    const batches: AxExample[][] = []
+    
+    for (let i = 0; i < valset.length; i += batchSize) {
+      batches.push(valset.slice(i, i + batchSize))
+    }
+    
+    let sumOfScores = 0
+    let totalProcessed = 0
+    
+    for (const batch of batches) {
+      const batchPromises = batch.map(async (example) => {
+        try {
+          const prediction = await this.program.forward(this.ai, example as IN)
+          const score = metricFn({ prediction, example })
+          return score
+        } catch (err) {
+          if (this.verbose) {
+            console.error('Error evaluating example:', err)
+          }
+          return 0 // Return 0 score for failed evaluations
+        }
+      })
+      
+      const batchScores = await Promise.all(batchPromises)
+      sumOfScores += batchScores.reduce((sum, score) => sum + score, 0)
+      totalProcessed += batch.length
+    }
+    
+    return sumOfScores / totalProcessed
   }
 
   /**
