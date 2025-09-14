@@ -6,10 +6,9 @@ A comprehensive collection of examples showcasing Ax framework capabilities, fro
 
 - [Getting Started](#getting-started)
 - [Core Concepts](#core-concepts)
-- [Advanced Features](#advanced-features)
 - [Production Patterns](#production-patterns)
 - [Optimization & Training](#optimization--training)
-
+- [Advanced (Multi-Modal, Documents)](#advanced-features)
 - [Agent Systems](#agent-systems)
 - [Workflow Orchestration](#workflow-orchestration)
 
