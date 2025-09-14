@@ -5,15 +5,14 @@ through automatic optimization. **Time to first results**: 5 minutes
 
 ## 📋 Table of Contents
 
-- [What is LLM Optimization?](#what-is-llm-optimization)
-- [🚀 5-Minute Quick Start](#-5-minute-quick-start) ← **Start here!**
-  - [Step 6: Save Your Optimization Results 💾](#step-6-save-your-optimization-results-)
+- [What is LLM Optimization?](#what-is-llm-optimization) ← **Start here!**
+  - [Step 6: Save Your Optimization Results 💾](#step-6-save-your-optimization-results)
   - [Step 7: Load and Use in Production 🚀](#step-7-load-and-use-in-production-)
 - [📚 Understanding the Basics](#-understanding-the-basics)
 - [🎯 Common Use Cases](#-common-use-cases-copy--paste-ready)
 - [💰 Saving Money: Teacher-Student Setup](#-saving-money-teacher-student-setup)
 - [🔧 Making It Better: Practical Tips](#-making-it-better-practical-tips)
-- [🛠️ Troubleshooting Guide](#️-troubleshooting-guide)
+- [🛠️ Troubleshooting Guide](#-troubleshooting-guide)
 - [🎓 Next Steps: Level Up Your Skills](#-next-steps-level-up-your-skills)
 - [📖 Complete Working Example](#-complete-working-example)
 - [🎯 Key Takeaways](#-key-takeaways)

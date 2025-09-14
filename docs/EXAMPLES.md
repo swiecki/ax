@@ -9,7 +9,7 @@ A comprehensive collection of examples showcasing Ax framework capabilities, fro
 - [Advanced Features](#advanced-features)
 - [Production Patterns](#production-patterns)
 - [Optimization & Training](#optimization--training)
-- [Multi-Modal & Vision](#multi-modal--vision)
+
 - [Agent Systems](#agent-systems)
 - [Workflow Orchestration](#workflow-orchestration)
 

@@ -8,14 +8,13 @@ comprehensive observability
 
 ## 📋 Table of Contents
 
-- [What is Telemetry in Ax?](#what-is-telemetry-in-ax)
-- [🚀 5-Minute Quick Start](#-5-minute-quick-start) ← **Start here!**
+- [What is Telemetry in Ax?](#what-is-telemetry-in-ax) ← **Start here!**
 - [📊 Metrics Overview](#-metrics-overview)
 - [🔍 Tracing Overview](#-tracing-overview)
 - [🎯 Common Observability Patterns](#-common-observability-patterns)
-- [🏗️ Production Setup](#️-production-setup)
+- [🏗️ Production Setup](#-production-setup)
 - [⚡ Advanced Configuration](#-advanced-configuration)
-- [🛠️ Troubleshooting Guide](#️-troubleshooting-guide)
+- [🛠️ Troubleshooting Guide](#-troubleshooting-guide)
 - [🎓 Best Practices](#-best-practices)
 - [📖 Complete Examples](#-complete-examples)
 - [🎯 Key Takeaways](#-key-takeaways)
